@@ -51,53 +51,67 @@ class BackendService {
             xhr.open('POST', `${this.baseURL}/process-stream`);
 
             const collectedLogs: SystemLog[] = [];
-            let buffer = '';
+            let chunkBuffer = '';     // 记录已处理的 responseText 长度
+            let sseEventBuffer = '';  // 跨 XHR 块累积不完整的 SSE 事件
             let lastProgress = 0;
+            let settled = false;      // 防止 resolve/reject 被调用多次
+
+            const handleEvent = (eventType: string, dataStr: string) => {
+                if (settled) return;
+                try {
+                    const data = JSON.parse(dataStr);
+                    if (eventType === 'log') {
+                        const msg: string = data.message || '';
+                        const level: string = data.level || 'INFO';
+                        onLog(msg, level);
+                        collectedLogs.push({
+                            id: `log-${collectedLogs.length}`,
+                            timestamp: new Date().toISOString(),
+                            level: level as 'INFO' | 'ERROR' | 'WARN',
+                            module: 'Python',
+                            message: msg
+                        });
+                        const p = inferProgress(msg);
+                        if (p !== null && p > lastProgress) {
+                            lastProgress = p;
+                            onProgress(p);
+                        }
+                    } else if (eventType === 'done') {
+                        settled = true;
+                        onProgress(100);
+                        resolve({
+                            citations: data.citations || [],
+                            logs: collectedLogs,
+                            outputPath: data.downloadUrl || data.outputPath
+                        });
+                    } else if (eventType === 'error') {
+                        settled = true;
+                        reject(new Error(data.message));
+                    }
+                } catch (e) {
+                    // JSON 解析失败，忽略
+                }
+            };
 
             xhr.onreadystatechange = () => {
                 if (xhr.readyState >= 3 && xhr.status === 200) {
-                    // 处理新到的文本块
-                    const newText = xhr.responseText.slice(buffer.length);
-                    buffer = xhr.responseText;
+                    // 取本次新增内容，追加到 SSE 事件缓冲区
+                    const newText = xhr.responseText.slice(chunkBuffer.length);
+                    chunkBuffer = xhr.responseText;
+                    sseEventBuffer += newText;
 
-                    const parts = newText.split('\n\n');
-                    parts.forEach(part => {
-                        const eventMatch = part.match(/^event: (\w+)\ndata: (.+)$/s);
-                        if (!eventMatch) return;
+                    // 每次处理所有以 \n\n 结尾的完整事件
+                    // 这样即使单个事件跨越多个 XHR 块也能正确解析
+                    let boundary: number;
+                    while ((boundary = sseEventBuffer.indexOf('\n\n')) !== -1) {
+                        const rawEvent = sseEventBuffer.slice(0, boundary).trim();
+                        sseEventBuffer = sseEventBuffer.slice(boundary + 2);
+                        if (!rawEvent) continue;
+                        const eventMatch = rawEvent.match(/^event: (\w+)\ndata: (.+)$/s);
+                        if (!eventMatch) continue;
                         const [, eventType, dataStr] = eventMatch;
-                        try {
-                            const data = JSON.parse(dataStr);
-                            if (eventType === 'log') {
-                                const msg: string = data.message || '';
-                                const level: string = data.level || 'INFO';
-                                onLog(msg, level);
-                                collectedLogs.push({
-                                    id: `log-${collectedLogs.length}`,
-                                    timestamp: new Date().toISOString(),
-                                    level: level as 'INFO' | 'ERROR' | 'WARN',
-                                    module: 'Python',
-                                    message: msg
-                                });
-                                // 根据关键词更新进度
-                                const p = inferProgress(msg);
-                                if (p !== null && p > lastProgress) {
-                                    lastProgress = p;
-                                    onProgress(p);
-                                }
-                            } else if (eventType === 'done') {
-                                onProgress(100);
-                                resolve({
-                                    citations: data.citations || [],
-                                    logs: collectedLogs,
-                                    outputPath: data.downloadUrl || data.outputPath
-                                });
-                            } else if (eventType === 'error') {
-                                reject(new Error(data.message));
-                            }
-                        } catch (e) {
-                            // 忽略解析失败的块
-                        }
-                    });
+                        handleEvent(eventType, dataStr);
+                    }
                 }
             };
 

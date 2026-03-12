@@ -12,6 +12,17 @@ const __dirname = dirname(__filename);
 
 const app = express();
 
+// ── 内存文件缓存：处理完成后将docx读入内存，避免下载时找不到文件 ──
+// key: sessionId, value: { buffer: Buffer, expires: number }
+const fileCache = new Map();
+// 每15分钟清理过期缓存
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of fileCache.entries()) {
+    if (val.expires < now) fileCache.delete(key);
+  }
+}, 15 * 60 * 1000);
+
 // 使用绝对路径存放上传文件，避免cwd不同导致路径解析错误
 const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -210,6 +221,12 @@ app.post('/api/process-stream', upload.fields([
         isOrphaned: false
       }));
 
+      // 将docx文件读入内存缓存（10分钟有效），避免下载时磁盘访问失败
+      const fileBuffer = fs.readFileSync(outputPath);
+      fileCache.set(sessionId, { buffer: fileBuffer, expires: Date.now() + 10 * 60 * 1000 });
+      // 从磁盘删除临时文件
+      try { fs.unlinkSync(outputPath); } catch (e) {}
+
       // 返回带 sessionId 的下载URL，前端可直接触发浏览器下载
       const downloadUrl = `/api/download?id=${sessionId}`;
       sendEvent('done', { citations, outputPath: downloadUrl, downloadUrl });
@@ -225,31 +242,24 @@ app.post('/api/process-stream', upload.fields([
   });
 });
 
-// 下载接口
+// 下载接口 - 从内存缓存中提供文件，不依赖磁盘
 app.get('/api/download', (req, res) => {
-  // 支持通过 ?id=xxx 指定具体文件（避免多用户冲突），不传则回退到旧路径
   const sessionId = req.query.id;
-  const outputPath = sessionId
-    ? path.join(__dirname, `../../outputs/result-${sessionId}.docx`)
-    : path.join(__dirname, '../../outputs/result.docx');
 
-  if (fs.existsSync(outputPath)) {
-    res.download(outputPath, 'result.docx', (err) => {
-      if (err) {
-        console.error('Download error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Download failed' });
-        }
-      } else {
-        // 下载成功后清理文件（仅清理带sessionId的临时文件）
-        if (sessionId) {
-          try { fs.unlinkSync(outputPath); } catch (e) {}
-        }
-      }
-    });
-  } else {
-    res.status(404).json({ error: 'File not found. 请重新处理文档后再下载。' });
+  if (!sessionId) {
+    return res.status(400).json({ error: '缺少 session ID，请重新处理文档。' });
   }
+
+  const cached = fileCache.get(sessionId);
+  if (!cached) {
+    return res.status(404).json({ error: '文件不存在或已过期（10分钟），请重新处理文档。' });
+  }
+
+  // 明确设置下载响应头，确保浏览器识别为文件下载
+  res.setHeader('Content-Disposition', 'attachment; filename="result.docx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Length', cached.buffer.length);
+  res.end(cached.buffer);
 });
 
 // 生产环境：serve 前端构建产物
