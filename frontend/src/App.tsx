@@ -18,12 +18,34 @@ const App: React.FC = () => {
   });
   const [outputPath, setOutputPath] = useState<string | null>(null);
 
+  // 构建完整的下载URL（生产环境用相对路径，开发环境用本地地址）
+  const buildDownloadUrl = (downloadUrl?: string | null): string => {
+    const fallback = import.meta.env.PROD
+      ? '/api/download'
+      : 'http://localhost:8081/api/download';
+    if (!downloadUrl) return fallback;
+    return import.meta.env.PROD
+      ? downloadUrl
+      : `http://localhost:8081${downloadUrl}`;
+  };
+
+  // 同步触发下载：直接用原生 <a> 标签，不走 fetch/blob
+  // 这样不依赖用户手势上下文，浏览器不会拦截
+  const triggerDownload = (downloadUrl?: string | null) => {
+    const url = buildDownloadUrl(downloadUrl);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'result.docx';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const handleStartProcessing = async () => {
-    // 切换到处理页面，清空旧日志
     setState(prev => ({ ...prev, step: WorkflowStep.PROCESSING, processingProgress: 0, systemLogs: [] }));
 
     try {
-      // 调用后端服务
       const result = await backendService.processDocuments(
         state.referenceDoc,
         state.targetDoc,
@@ -45,12 +67,9 @@ const App: React.FC = () => {
         }
       );
 
-      // 保存输出路径（带sessionId的下载URL）
-      if (result.outputPath) {
-        setOutputPath(result.outputPath);
-      }
+      const dlUrl = result.outputPath || null;
+      setOutputPath(dlUrl);
 
-      // 处理完成，切换到导出页面
       setState(prev => ({
         ...prev,
         citations: result.citations,
@@ -58,52 +77,13 @@ const App: React.FC = () => {
         step: WorkflowStep.EXPORT
       }));
 
-      // 自动触发浏览器下载，无需用户手动点击
-      try {
-        await triggerDownload(result.outputPath || undefined);
-      } catch (error) {
-        // 自动下载失败不弹框，用户可手动点击按钮重试
-        console.error('Auto-download failed:', error);
-      }
+      // 自动触发下载（同步，不依赖用户手势）
+      triggerDownload(dlUrl);
+
     } catch (error) {
       console.error('Processing failed:', error);
-      alert('处理失败: ' + (error as Error).message + '\n\n如果Express服务器未运行，将使用Mock数据。');
-      // 即使失败也切换到导出页面（使用Mock数据）
+      alert('处理失败: ' + (error as Error).message);
       setState(prev => ({ ...prev, step: WorkflowStep.EXPORT }));
-    }
-  };
-
-  const triggerDownload = async (downloadUrl?: string) => {
-    // 优先使用后端返回的带sessionId的URL，否则回退默认接口
-    const baseUrl = import.meta.env.PROD ? '' : 'http://localhost:8081';
-    const url = downloadUrl
-      ? (import.meta.env.PROD ? downloadUrl : `http://localhost:8081${downloadUrl}`)
-      : `${baseUrl}/api/download`;
-
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`服务器返回 ${response.status}，请重试`);
-      }
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = objectUrl;
-      a.download = 'result.docx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      throw error;
-    }
-  };
-
-  const handleDownload = async () => {
-    try {
-      await triggerDownload(outputPath || undefined);
-    } catch (error) {
-      alert('下载失败: ' + (error as Error).message);
     }
   };
 
@@ -112,7 +92,6 @@ const App: React.FC = () => {
       currentStep={state.step}
       onNavigate={(step) => setState(prev => ({ ...prev, step }))}
     >
-      {/* 上传配置页面 */}
       {(state.step === WorkflowStep.UPLOAD || state.step === WorkflowStep.CONFIG) && (
         <UploadConfig
           referenceDoc={state.referenceDoc}
@@ -125,7 +104,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* 处理进度页面 */}
       {state.step === WorkflowStep.PROCESSING && (
         <Processing
           progress={state.processingProgress}
@@ -133,7 +111,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* 完成页面 */}
       {state.step === WorkflowStep.EXPORT && (
         <div className="h-full flex flex-col items-center justify-center bg-white p-8">
           <div className="text-center space-y-6 max-w-lg">
@@ -144,6 +121,10 @@ const App: React.FC = () => {
             <p className="text-slate-600">
               文档已成功处理，共找到 <strong>{state.citations.length}</strong> 个脚注。
             </p>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm text-slate-500">
+              下载应已自动开始。如未开始，请点击下方按钮。
+            </div>
 
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-left">
               <h4 className="font-bold text-black mb-2">处理摘要</h4>
@@ -164,12 +145,14 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex gap-4 justify-center">
-              <button
-                onClick={handleDownload}
+              {/* 使用原生 <a> 标签，href 直接指向下载接口，最可靠的下载方式 */}
+              <a
+                href={buildDownloadUrl(outputPath)}
+                download="result.docx"
                 className="flex items-center gap-2 bg-black text-white px-6 py-3 rounded-xl hover:bg-slate-800 font-bold shadow-lg transition-transform hover:-translate-y-1"
               >
                 <Download size={20} /> 下载 .docx
-              </button>
+              </a>
               <button
                 onClick={() => {
                   setOutputPath(null);
