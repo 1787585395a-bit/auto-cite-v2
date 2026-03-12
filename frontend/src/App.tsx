@@ -45,7 +45,7 @@ const App: React.FC = () => {
         }
       );
 
-      // 保存输出路径
+      // 保存输出路径（带sessionId的下载URL）
       if (result.outputPath) {
         setOutputPath(result.outputPath);
       }
@@ -57,6 +57,14 @@ const App: React.FC = () => {
         systemLogs: result.logs,
         step: WorkflowStep.EXPORT
       }));
+
+      // 自动触发浏览器下载，无需用户手动点击
+      try {
+        await triggerDownload(result.outputPath || undefined);
+      } catch (error) {
+        // 自动下载失败不弹框，用户可手动点击按钮重试
+        console.error('Auto-download failed:', error);
+      }
     } catch (error) {
       console.error('Processing failed:', error);
       alert('处理失败: ' + (error as Error).message + '\n\n如果Express服务器未运行，将使用Mock数据。');
@@ -65,9 +73,38 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDownload = () => {
-    const url = import.meta.env.PROD ? '/api/download' : 'http://localhost:8081/api/download';
-    window.location.href = url;
+  const triggerDownload = async (downloadUrl?: string) => {
+    // 优先使用后端返回的带sessionId的URL，否则回退默认接口
+    const baseUrl = import.meta.env.PROD ? '' : 'http://localhost:8081';
+    const url = downloadUrl
+      ? (import.meta.env.PROD ? downloadUrl : `http://localhost:8081${downloadUrl}`)
+      : `${baseUrl}/api/download`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`服务器返回 ${response.status}，请重试`);
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = 'result.docx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      await triggerDownload(outputPath || undefined);
+    } catch (error) {
+      alert('下载失败: ' + (error as Error).message);
+    }
   };
 
   return (

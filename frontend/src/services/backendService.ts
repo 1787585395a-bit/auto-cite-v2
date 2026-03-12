@@ -89,7 +89,7 @@ class BackendService {
                                 resolve({
                                     citations: data.citations || [],
                                     logs: collectedLogs,
-                                    outputPath: data.outputPath
+                                    outputPath: data.downloadUrl || data.outputPath
                                 });
                             } else if (eventType === 'error') {
                                 reject(new Error(data.message));

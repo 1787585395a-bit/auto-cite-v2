@@ -140,8 +140,10 @@ app.post('/api/process-stream', upload.fields([
     return;
   }
 
+  // 每次请求使用唯一文件名，避免多用户冲突
+  const sessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const pythonScript = path.join(__dirname, '../../scripts/run_full_pipeline.py');
-  const outputPath = path.join(__dirname, '../../outputs/result.docx');
+  const outputPath = path.join(__dirname, `../../outputs/result-${sessionId}.docx`);
   const projectRoot = path.join(__dirname, '../..');
 
   const pythonProcess = spawn('python', [
@@ -208,7 +210,9 @@ app.post('/api/process-stream', upload.fields([
         isOrphaned: false
       }));
 
-      sendEvent('done', { citations, outputPath });
+      // 返回带 sessionId 的下载URL，前端可直接触发浏览器下载
+      const downloadUrl = `/api/download?id=${sessionId}`;
+      sendEvent('done', { citations, outputPath: downloadUrl, downloadUrl });
     } catch (e) {
       sendEvent('error', { message: '读取结果失败: ' + e.message });
     }
@@ -223,17 +227,28 @@ app.post('/api/process-stream', upload.fields([
 
 // 下载接口
 app.get('/api/download', (req, res) => {
-  const outputPath = path.join(__dirname, '../../outputs/result.docx');
+  // 支持通过 ?id=xxx 指定具体文件（避免多用户冲突），不传则回退到旧路径
+  const sessionId = req.query.id;
+  const outputPath = sessionId
+    ? path.join(__dirname, `../../outputs/result-${sessionId}.docx`)
+    : path.join(__dirname, '../../outputs/result.docx');
 
   if (fs.existsSync(outputPath)) {
     res.download(outputPath, 'result.docx', (err) => {
       if (err) {
         console.error('Download error:', err);
-        res.status(500).json({ error: 'Download failed' });
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Download failed' });
+        }
+      } else {
+        // 下载成功后清理文件（仅清理带sessionId的临时文件）
+        if (sessionId) {
+          try { fs.unlinkSync(outputPath); } catch (e) {}
+        }
       }
     });
   } else {
-    res.status(404).json({ error: 'File not found' });
+    res.status(404).json({ error: 'File not found. 请重新处理文档后再下载。' });
   }
 });
 
