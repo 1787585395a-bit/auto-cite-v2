@@ -1,17 +1,174 @@
-import React, { useState } from 'react';
-import { UploadCloud, FileType, CheckCircle, ArrowRight } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ArrowRight, CheckCircle2, Languages, UploadCloud } from 'lucide-react';
+
 import { DocumentFile } from '../types';
-import { LiquidButton } from './ui/liquid-glass-button';
+
+const HERO_VIDEO_URL =
+  'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260217_030345_246c0224-10a4-422c-b324-070b7c0eceda.mp4';
+
+const previewExamples: Record<string, string> = {
+  'GB/T 7714':
+    '[1] Heidegger, M. Being and Time[M]. Chinese translated edition. Beijing: Commercial Press, 2014.',
+  APA: 'Heidegger, M. (1927/2014). Being and Time (Chinese translated edition). Commercial Press.',
+  Chicago:
+    'Martin Heidegger, Being and Time, Chinese translated edition (Beijing: Commercial Press, 2014).',
+  Custom: 'Use your own translated footnote template string for the final DOCX output.',
+};
 
 interface UploadConfigProps {
   referenceDoc: DocumentFile | null;
   targetDoc: DocumentFile | null;
   citationStyle: string;
-  onSetReference: (file: DocumentFile) => void;
-  onSetTarget: (file: DocumentFile) => void;
+  onSetReference: (file: DocumentFile | null) => void;
+  onSetTarget: (file: DocumentFile | null) => void;
   onSetStyle: (style: string) => void;
   onStart: () => void;
 }
+
+interface PillButtonProps {
+  children: React.ReactNode;
+  className?: string;
+  disabled?: boolean;
+  onClick: () => void;
+  shell?: boolean;
+  tone?: 'dark' | 'light';
+  type?: 'button' | 'submit';
+}
+
+const PillButton: React.FC<PillButtonProps> = ({
+  children,
+  className = '',
+  disabled = false,
+  onClick,
+  shell = true,
+  tone = 'dark',
+  type = 'button',
+}) => {
+  const innerClassName =
+    tone === 'light' ? 'pill-inner-light hover:bg-white/90' : 'pill-inner-dark hover:bg-white/[0.08]';
+
+  if (!shell) {
+    return (
+      <button
+        type={type}
+        onClick={onClick}
+        disabled={disabled}
+        className={`${innerClassName} ${disabled ? 'cursor-not-allowed opacity-45' : ''} ${className}`}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`pill-shell ${disabled ? 'cursor-not-allowed opacity-45' : ''} ${className}`}
+    >
+      <span className="pill-streak" />
+      <span className={innerClassName}>{children}</span>
+    </button>
+  );
+};
+
+interface UploadSlotProps {
+  acceptedLabel: string;
+  dragActive: boolean;
+  file: DocumentFile | null;
+  icon: React.ReactNode;
+  marker: string;
+  note: string;
+  onDragLeave: () => void;
+  onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
+  onPick: () => void;
+  onRemove: () => void;
+  title: string;
+}
+
+const UploadSlot: React.FC<UploadSlotProps> = ({
+  acceptedLabel,
+  dragActive,
+  file,
+  icon,
+  marker,
+  note,
+  onDragLeave,
+  onDragOver,
+  onDrop,
+  onPick,
+  onRemove,
+  title,
+}) => {
+  const stateClassName = file
+    ? 'border-white/30 bg-white/[0.08]'
+    : dragActive
+      ? 'border-white/45 bg-white/[0.08]'
+      : 'border-white/15 bg-white/[0.03] hover:border-white/30 hover:bg-white/[0.05]';
+
+  return (
+    <div
+      className={`line-panel min-h-[176px] border border-dashed p-4 md:min-h-[188px] md:p-5 transition duration-300 ${stateClassName}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {file ? (
+        <div className="flex h-full flex-col justify-between gap-4">
+          <div className="space-y-2.5">
+            <div className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white">
+              <CheckCircle2 size={20} />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs uppercase tracking-[0.32em] text-white/45">{title}</p>
+                <span className="rounded-full border border-white/12 px-2 py-1 text-[10px] uppercase tracking-[0.24em] text-white/45">
+                  {marker}
+                </span>
+              </div>
+              <p className="text-base font-medium text-white">{file.name}</p>
+              <p className="text-sm text-white/45">{(file.size / 1024).toFixed(1)} KB</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-left text-sm font-medium text-white/70 transition hover:text-white"
+          >
+            Remove file
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onPick}
+          className="flex h-full w-full flex-col items-start justify-between text-left"
+        >
+          <div className="space-y-3.5">
+            <div className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white/88">
+              {icon}
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs uppercase tracking-[0.32em] text-white/45">{title}</p>
+                <span className="rounded-full border border-white/12 px-2 py-1 text-[10px] uppercase tracking-[0.24em] text-white/45">
+                  {marker}
+                </span>
+              </div>
+              <p className="max-w-sm text-sm leading-6 text-white/68">{note}</p>
+            </div>
+          </div>
+
+          <p className="text-xs uppercase tracking-[0.32em] text-white/40">{acceptedLabel}</p>
+        </button>
+      )}
+    </div>
+  );
+};
 
 export const UploadConfig: React.FC<UploadConfigProps> = ({
   referenceDoc,
@@ -20,206 +177,237 @@ export const UploadConfig: React.FC<UploadConfigProps> = ({
   onSetReference,
   onSetTarget,
   onSetStyle,
-  onStart
+  onStart,
 }) => {
   const [isDragOverRef, setIsDragOverRef] = useState(false);
   const [isDragOverTarget, setIsDragOverTarget] = useState(false);
-  const refInputRef = React.useRef<HTMLInputElement>(null);
-  const targetInputRef = React.useRef<HTMLInputElement>(null);
+
+  const refInputRef = useRef<HTMLInputElement>(null);
+  const targetInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (file: File, type: 'reference' | 'target') => {
     const docFile: DocumentFile = {
       name: file.name,
       size: file.size,
-      type: type,
+      type,
       uploadDate: Date.now(),
-      file: file
+      file,
     };
 
-    if (type === 'reference') onSetReference(docFile);
-    else onSetTarget(docFile);
-  };
-
-  const handleDrop = (e: React.DragEvent, type: 'reference' | 'target') => {
-    e.preventDefault();
-    if (type === 'reference') setIsDragOverRef(false);
-    else setIsDragOverTarget(false);
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFileSelect(files[0], type);
-    }
-  };
-
-  const handleClick = (type: 'reference' | 'target') => {
     if (type === 'reference') {
-      refInputRef.current?.click();
+      onSetReference(docFile);
+      return;
+    }
+
+    onSetTarget(docFile);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>, type: 'reference' | 'target') => {
+    event.preventDefault();
+
+    if (type === 'reference') {
+      setIsDragOverRef(false);
     } else {
-      targetInputRef.current?.click();
+      setIsDragOverTarget(false);
+    }
+
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      handleFileSelect(file, type);
     }
   };
 
-  const isReady = referenceDoc && targetDoc;
+  const openPicker = (type: 'reference' | 'target') => {
+    const input = type === 'reference' ? refInputRef.current : targetInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.value = '';
+    input.click();
+  };
+
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const isReady = Boolean(referenceDoc);
 
   return (
-    <div className="max-w-4xl mx-auto p-8 space-y-8">
-
-      {/* Hidden file inputs */}
+    <div className="relative bg-black text-white">
       <input
         ref={refInputRef}
         type="file"
         accept=".pdf,.docx"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleFileSelect(file, 'reference');
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            handleFileSelect(file, 'reference');
+          }
         }}
       />
+
       <input
         ref={targetInputRef}
         type="file"
         accept=".docx"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleFileSelect(file, 'target');
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            handleFileSelect(file, 'target');
+          }
         }}
       />
 
-      {/* Step 1: Upload */}
-      <section>
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-black flex items-center gap-2">
-            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-black text-sm">1</span>
-            Document Upload
-          </h2>
-          <p className="text-slate-600 ml-10">Upload your source English reference document and the target Chinese translation.</p>
-        </div>
+      <section id="hero" className="relative isolate min-h-[100svh] overflow-hidden border-b border-white/10">
+        <video
+          className="absolute inset-0 h-full w-full object-cover"
+          src={HERO_VIDEO_URL}
+          autoPlay
+          loop
+          muted
+          playsInline
+        />
+        <div className="absolute inset-0 bg-black/52" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.12),rgba(0,0,0,0.76)_72%,#000_100%)]" />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 ml-10">
-          {/* Reference Doc Upload */}
-          <div
-            className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all h-64
-              ${referenceDoc ? 'border-black bg-slate-50' : isDragOverRef ? 'border-black bg-slate-50' : 'border-black bg-white hover:border-slate-800'}
-            `}
-            onDragOver={(e) => { e.preventDefault(); setIsDragOverRef(true); }}
-            onDragLeave={() => setIsDragOverRef(false)}
-            onDrop={(e) => handleDrop(e, 'reference')}
+        <nav className="absolute inset-x-0 top-0 z-20 px-6 py-5 md:px-10 xl:px-[120px]">
+          <button
+            type="button"
+            onClick={() => scrollToSection('hero')}
+            className="text-sm font-medium tracking-[0.38em] text-white md:text-base"
           >
-            {referenceDoc ? (
-              <div className="space-y-3">
-                <div className="w-16 h-16 bg-slate-100 text-black rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle size={32} />
-                </div>
-                <div>
-                  <p className="font-semibold text-black">{referenceDoc.name}</p>
-                  <p className="text-sm text-slate-500">{(referenceDoc.size / 1024).toFixed(1)} KB</p>
-                </div>
-                <button onClick={() => {}} className="text-xs text-slate-600 hover:underline">Remove</button>
-              </div>
-            ) : (
-              <div className="space-y-4 cursor-pointer" onClick={() => handleClick('reference')}>
-                <div className="w-16 h-16 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto group-hover:bg-white">
-                  <UploadCloud size={32} />
-                </div>
-                <div>
-                  <p className="font-medium text-black">Reference Document</p>
-                  <p className="text-xs text-slate-500 mt-1">Drag & drop or click to browse</p>
-                  <p className="text-[10px] uppercase font-bold text-slate-400 mt-2">.docx, .pdf</p>
-                </div>
-              </div>
-            )}
-          </div>
+            AUTO CITE
+          </button>
+        </nav>
 
-          {/* Target Doc Upload */}
-          <div
-             className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all h-64
-              ${targetDoc ? 'border-black bg-slate-50' : isDragOverTarget ? 'border-black bg-slate-50' : 'border-black bg-white hover:border-slate-800'}
-            `}
-            onDragOver={(e) => { e.preventDefault(); setIsDragOverTarget(true); }}
-            onDragLeave={() => setIsDragOverTarget(false)}
-            onDrop={(e) => handleDrop(e, 'target')}
-          >
-             {targetDoc ? (
-              <div className="space-y-3">
-                <div className="w-16 h-16 bg-slate-100 text-black rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle size={32} />
-                </div>
-                <div>
-                  <p className="font-semibold text-black">{targetDoc.name}</p>
-                  <p className="text-sm text-slate-500">{(targetDoc.size / 1024).toFixed(1)} KB</p>
-                </div>
-                 <button onClick={() => {}} className="text-xs text-slate-600 hover:underline">Remove</button>
-              </div>
-            ) : (
-              <div className="space-y-4 cursor-pointer" onClick={() => handleClick('target')}>
-                <div className="w-16 h-16 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto">
-                  <FileType size={32} />
-                </div>
-                <div>
-                  <p className="font-medium text-black">Target Document (Translation)</p>
-                  <p className="text-xs text-slate-500 mt-1">Drag & drop or click to browse</p>
-                  <p className="text-[10px] uppercase font-bold text-slate-400 mt-2">.docx</p>
-                </div>
-              </div>
-            )}
+        <div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center px-6 pb-20 pt-24 text-center md:px-10 md:pb-16 xl:px-[120px]">
+          <div className="w-full max-w-[760px] space-y-6">
+            <h1 className="hero-text-gradient mx-auto max-w-[680px] text-[34px] font-medium leading-[1.18] md:text-[52px]">
+              Auto-Cite for research that needs the footnotes to stay intact.
+            </h1>
+            <p className="mx-auto max-w-[580px] text-[15px] leading-7 text-white/72">
+              Upload an English DOCX or PDF, add a Chinese draft if you already have one, and
+              export a finished DOCX with translated footnotes.
+            </p>
+
+            <PillButton tone="light" onClick={() => scrollToSection('workspace')}>
+              Start
+            </PillButton>
           </div>
         </div>
       </section>
 
-      {/* Step 2: Configuration */}
-      <section className="border-t border-slate-200 pt-8">
-        <div className="mb-6">
-           <h2 className="text-xl font-bold text-black flex items-center gap-2">
-            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-black text-sm">2</span>
-            Citation Style Configuration
-          </h2>
-          <p className="text-slate-600 ml-10">Select how the English references should be formatted in the Chinese document.</p>
-        </div>
+      <section id="workspace" className="relative z-20 bg-[#030303] px-6 pb-12 pt-12 md:px-10 md:pt-14 xl:px-[120px]">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-4 flex items-center gap-4">
+            <p className="text-[11px] uppercase tracking-[0.34em] text-white/42">Workspace</p>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
 
-        <div className="ml-10 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <label className="block text-sm font-medium text-black mb-2">Output Format Standard</label>
-          <select
-            value={citationStyle}
-            onChange={(e) => onSetStyle(e.target.value)}
-            className="w-full md:w-1/2 p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-black outline-none"
-          >
-            <option value="GB/T 7714">GB/T 7714 (China National Standard)</option>
-            <option value="APA">APA 7th Edition (Translated)</option>
-            <option value="Chicago">Chicago Manual of Style (Translated)</option>
-            <option value="Custom">Custom Template...</option>
-          </select>
-
-          {citationStyle === 'Custom' && (
-             <div className="mt-4">
-                <label className="block text-sm font-medium text-black mb-2">Template String</label>
-                <input
-                  type="text"
-                  defaultValue="[序号] 作者. 书名[M]. 译者, 译. 出版地: 出版社, 年份."
-                  className="w-full p-3 border border-slate-300 rounded-lg font-mono text-sm bg-slate-50"
+          <div className="upload-surface overflow-hidden">
+            <div className="p-5 md:p-6 lg:p-7">
+            <div className="space-y-5">
+              <div id="inputs" className="grid gap-3 lg:grid-cols-2">
+                <UploadSlot
+                  acceptedLabel=".DOCX, .PDF"
+                  dragActive={isDragOverRef}
+                  file={referenceDoc}
+                  icon={<UploadCloud size={20} />}
+                  marker="Required"
+                  note="English source file."
+                  onDragLeave={() => setIsDragOverRef(false)}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragOverRef(true);
+                  }}
+                  onDrop={(event) => handleDrop(event, 'reference')}
+                  onPick={() => openPicker('reference')}
+                  onRemove={() => onSetReference(null)}
+                  title="English source"
                 />
-             </div>
-          )}
 
-          <div className="mt-4 p-4 bg-slate-50 rounded-lg text-sm text-slate-600">
-            <strong>Preview:</strong> [1] 海德格尔. 存在与时间. 1927.
+                <UploadSlot
+                  acceptedLabel=".DOCX"
+                  dragActive={isDragOverTarget}
+                  file={targetDoc}
+                  icon={<Languages size={20} />}
+                  marker="Optional"
+                  note="Optional Chinese draft."
+                  onDragLeave={() => setIsDragOverTarget(false)}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragOverTarget(true);
+                  }}
+                  onDrop={(event) => handleDrop(event, 'target')}
+                  onPick={() => openPicker('target')}
+                  onRemove={() => onSetTarget(null)}
+                  title="Chinese draft"
+                />
+              </div>
+
+              <div id="styles" className="line-panel px-4 py-3 md:px-5">
+                <div className="grid gap-3 md:grid-cols-[minmax(240px,320px)_minmax(0,1fr)] md:items-center">
+                  <div className="space-y-2">
+                    <label htmlFor="citation-style" className="text-xs uppercase tracking-[0.28em] text-white/45">
+                      Footnote Style
+                    </label>
+                    <select
+                      id="citation-style"
+                      value={citationStyle}
+                      onChange={(event) => onSetStyle(event.target.value)}
+                      className="w-full rounded-2xl border border-white/12 bg-black/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/30"
+                    >
+                      <option value="GB/T 7714">GB/T 7714 (China National Standard)</option>
+                      <option value="APA">APA 7th Edition (Translated)</option>
+                      <option value="Chicago">Chicago Manual of Style (Translated)</option>
+                      <option value="Custom">Custom Template...</option>
+                    </select>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-sm leading-6 text-white/70">
+                    {previewExamples[citationStyle] || previewExamples['GB/T 7714']}
+                  </div>
+                </div>
+              </div>
+
+              {citationStyle === 'Custom' && (
+                <div className="line-panel px-4 py-3 md:px-5">
+                  <div className="space-y-2">
+                    <label htmlFor="custom-template" className="text-xs uppercase tracking-[0.28em] text-white/45">
+                      Template string
+                    </label>
+                    <input
+                      id="custom-template"
+                      type="text"
+                      defaultValue="[1] Author. Title[M]. Translator. Place: Publisher, Year."
+                      className="w-full rounded-2xl border border-white/12 bg-black/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/30"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-white/10 pt-4">
+                <div className="mx-auto flex max-w-xl flex-col items-center gap-4 text-center">
+                  <PillButton
+                    tone="light"
+                    shell={false}
+                    disabled={!isReady}
+                    onClick={onStart}
+                    className="w-full justify-center"
+                  >
+                    Start Processing
+                    <ArrowRight size={16} />
+                  </PillButton>
+                </div>
+              </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
-
-      {/* Action */}
-      <div className="flex justify-end pt-4 pb-12">
-        <LiquidButton
-          onClick={onStart}
-          disabled={!isReady}
-          size="xxl"
-          className={!isReady ? 'opacity-50 cursor-not-allowed' : ''}
-        >
-          Start Processing
-          <ArrowRight size={20} />
-        </LiquidButton>
-      </div>
-
     </div>
   );
 };

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { Download, FileCheck } from 'lucide-react';
+
 import { Layout } from './components/Layout';
-import { UploadConfig } from './components/UploadConfig';
 import { Processing } from './components/Processing';
-import { WorkflowStep, AppState } from './types';
+import { UploadConfig } from './components/UploadConfig';
 import { backendService } from './services/backendService';
-import { FileCheck, Download } from 'lucide-react';
+import { AppState, DocumentFile, WorkflowStep } from './types';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({
@@ -14,36 +15,36 @@ const App: React.FC = () => {
     citationStyle: 'GB/T 7714',
     citations: [],
     processingProgress: 0,
-    systemLogs: []
+    systemLogs: [],
   });
   const [outputPath, setOutputPath] = useState<string | null>(null);
 
-  // 构建完整的下载URL（生产环境用相对路径，开发环境用本地地址）
   const buildDownloadUrl = (downloadUrl?: string | null): string => {
-    const fallback = import.meta.env.PROD
-      ? '/api/download'
-      : 'http://localhost:8081/api/download';
-    if (!downloadUrl) return fallback;
-    return import.meta.env.PROD
-      ? downloadUrl
-      : `http://localhost:8081${downloadUrl}`;
+    const fallback = import.meta.env.PROD ? '/api/download' : 'http://localhost:8081/api/download';
+    if (!downloadUrl) {
+      return fallback;
+    }
+    return import.meta.env.PROD ? downloadUrl : `http://localhost:8081${downloadUrl}`;
   };
 
-  // 同步触发下载：直接用原生 <a> 标签，不走 fetch/blob
-  // 这样不依赖用户手势上下文，浏览器不会拦截
   const triggerDownload = (downloadUrl?: string | null) => {
     const url = buildDownloadUrl(downloadUrl);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'result.docx';
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'result.docx';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
   };
 
   const handleStartProcessing = async () => {
-    setState(prev => ({ ...prev, step: WorkflowStep.PROCESSING, processingProgress: 0, systemLogs: [] }));
+    setState((previousState) => ({
+      ...previousState,
+      step: WorkflowStep.PROCESSING,
+      processingProgress: 0,
+      systemLogs: [],
+    }));
 
     try {
       const result = await backendService.processDocuments(
@@ -51,124 +52,154 @@ const App: React.FC = () => {
         state.targetDoc,
         state.citationStyle,
         (progress) => {
-          setState(prev => ({ ...prev, processingProgress: progress }));
+          setState((previousState) => ({ ...previousState, processingProgress: progress }));
         },
         (message, level) => {
-          setState(prev => ({
-            ...prev,
-            systemLogs: [...prev.systemLogs, {
-              id: `log-${Date.now()}-${Math.random()}`,
-              timestamp: new Date().toISOString(),
-              level: (level || 'INFO') as 'INFO' | 'ERROR' | 'WARN',
-              module: 'Python',
-              message
-            }]
+          setState((previousState) => ({
+            ...previousState,
+            systemLogs: [
+              ...previousState.systemLogs,
+              {
+                id: `log-${Date.now()}-${Math.random()}`,
+                timestamp: new Date().toISOString(),
+                level: (level || 'INFO') as 'INFO' | 'ERROR' | 'WARN',
+                module: 'Python',
+                message,
+              },
+            ],
           }));
-        }
+        },
       );
 
-      const dlUrl = result.outputPath || null;
-      setOutputPath(dlUrl);
+      const downloadUrl = result.outputPath || null;
+      setOutputPath(downloadUrl);
 
-      setState(prev => ({
-        ...prev,
+      setState((previousState) => ({
+        ...previousState,
         citations: result.citations,
         systemLogs: result.logs,
-        step: WorkflowStep.EXPORT
+        step: WorkflowStep.EXPORT,
       }));
 
-      // 自动触发下载（同步，不依赖用户手势）
-      triggerDownload(dlUrl);
-
+      triggerDownload(downloadUrl);
     } catch (error) {
       console.error('Processing failed:', error);
-      alert('处理失败: ' + (error as Error).message);
-      setState(prev => ({ ...prev, step: WorkflowStep.EXPORT }));
+      window.alert(`Processing failed: ${(error as Error).message}`);
+      setState((previousState) => ({ ...previousState, step: WorkflowStep.UPLOAD }));
     }
   };
 
+  const resetForNextRun = () => {
+    setOutputPath(null);
+    setState((previousState) => ({
+      ...previousState,
+      step: WorkflowStep.UPLOAD,
+      referenceDoc: null,
+      targetDoc: null,
+      citations: [],
+      processingProgress: 0,
+      systemLogs: [],
+    }));
+  };
+
+  const setReferenceDoc = (file: DocumentFile | null) => {
+    setState((previousState) => ({ ...previousState, referenceDoc: file }));
+  };
+
+  const setTargetDoc = (file: DocumentFile | null) => {
+    setState((previousState) => ({ ...previousState, targetDoc: file }));
+  };
+
+  const usingAutoTranslation = !state.targetDoc;
+
   return (
-    <Layout
-      currentStep={state.step}
-      onNavigate={(step) => setState(prev => ({ ...prev, step }))}
-    >
+    <Layout currentStep={state.step} onNavigate={(step) => setState((previousState) => ({ ...previousState, step }))}>
       {(state.step === WorkflowStep.UPLOAD || state.step === WorkflowStep.CONFIG) && (
         <UploadConfig
           referenceDoc={state.referenceDoc}
           targetDoc={state.targetDoc}
           citationStyle={state.citationStyle}
-          onSetReference={(file) => setState(prev => ({ ...prev, referenceDoc: file }))}
-          onSetTarget={(file) => setState(prev => ({ ...prev, targetDoc: file }))}
-          onSetStyle={(style) => setState(prev => ({ ...prev, citationStyle: style }))}
+          onSetReference={setReferenceDoc}
+          onSetTarget={setTargetDoc}
+          onSetStyle={(style) => setState((previousState) => ({ ...previousState, citationStyle: style }))}
           onStart={handleStartProcessing}
         />
       )}
 
       {state.step === WorkflowStep.PROCESSING && (
-        <Processing
-          progress={state.processingProgress}
-          logs={state.systemLogs.map(l => l.message)}
-        />
+        <Processing progress={state.processingProgress} logs={state.systemLogs.map((log) => log.message)} />
       )}
 
       {state.step === WorkflowStep.EXPORT && (
-        <div className="h-full flex flex-col items-center justify-center bg-white p-8">
-          <div className="text-center space-y-6 max-w-lg">
-            <div className="w-24 h-24 bg-slate-100 text-black rounded-full flex items-center justify-center mx-auto shadow-lg">
-              <FileCheck size={48} />
-            </div>
-            <h2 className="text-3xl font-bold text-black">处理完成！</h2>
-            <p className="text-slate-600">
-              文档已成功处理，共找到 <strong>{state.citations.length}</strong> 个脚注。
-            </p>
+        <div className="relative min-h-screen overflow-hidden px-6 pb-16 pt-24 md:px-10">
+          <div className="pointer-events-none absolute inset-0">
+            <div className="ambient-grid absolute inset-0 opacity-30" />
+            <div className="absolute left-[-10%] top-[10%] h-72 w-72 rounded-full bg-white/[0.06] blur-3xl" />
+            <div className="absolute right-[-12%] bottom-[6%] h-80 w-80 rounded-full bg-white/[0.05] blur-3xl" />
+          </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm text-slate-500">
-              下载应已自动开始。如未开始，请点击下方按钮。
-            </div>
+          <div className="relative z-10 mx-auto w-full max-w-4xl upload-surface p-6 md:p-10">
+            <div className="space-y-8 text-center">
+              <div className="mx-auto inline-flex h-20 w-20 items-center justify-center rounded-full border border-white/14 bg-white/10 text-white">
+                <FileCheck size={36} />
+              </div>
 
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-left">
-              <h4 className="font-bold text-black mb-2">处理摘要</h4>
-              <ul className="space-y-2 text-sm text-slate-600">
-                <li className="flex justify-between">
-                  <span>引用格式:</span>
-                  <span className="font-mono">{state.citationStyle}</span>
-                </li>
-                <li className="flex justify-between">
-                  <span>参考文档:</span>
-                  <span className="font-mono text-xs">{state.referenceDoc?.name}</span>
-                </li>
-                <li className="flex justify-between">
-                  <span>目标文档:</span>
-                  <span className="font-mono text-xs">{state.targetDoc?.name}</span>
-                </li>
-              </ul>
-            </div>
+              <div className="space-y-4">
+                <p className="text-xs uppercase tracking-[0.32em] text-white/42">Export Ready</p>
+                <h1 className="text-3xl font-medium leading-tight text-white md:text-5xl">
+                  Your translated DOCX is ready to download.
+                </h1>
+                <p className="mx-auto max-w-2xl text-sm leading-7 text-white/64 md:text-base">
+                  Processed <span className="font-medium text-white">{state.citations.length}</span>{' '}
+                  translated footnotes
+                  {usingAutoTranslation
+                    ? ' and generated the Chinese body before insertion.'
+                    : ' and merged them back into your uploaded Chinese draft.'}
+                </p>
+              </div>
 
-            <div className="flex gap-4 justify-center">
-              {/* 使用原生 <a> 标签，href 直接指向下载接口，最可靠的下载方式 */}
-              <a
-                href={buildDownloadUrl(outputPath)}
-                download="result.docx"
-                className="flex items-center gap-2 bg-black text-white px-6 py-3 rounded-xl hover:bg-slate-800 font-bold shadow-lg transition-transform hover:-translate-y-1"
-              >
-                <Download size={20} /> 下载 .docx
-              </a>
-              <button
-                onClick={() => {
-                  setOutputPath(null);
-                  setState(prev => ({
-                    ...prev,
-                    step: WorkflowStep.UPLOAD,
-                    referenceDoc: null,
-                    targetDoc: null,
-                    citations: [],
-                    processingProgress: 0
-                  }));
-                }}
-                className="px-6 py-3 rounded-xl text-slate-600 hover:bg-slate-200 font-medium"
-              >
-                处理新文件
-              </button>
+              <div className="grid gap-4 text-left md:grid-cols-3">
+                <div className="line-panel px-5 py-5">
+                  <p className="text-xs uppercase tracking-[0.32em] text-white/42">Source</p>
+                  <p className="mt-3 text-sm font-medium text-white">{state.referenceDoc?.name || 'Not provided'}</p>
+                </div>
+
+                <div className="line-panel px-5 py-5">
+                  <p className="text-xs uppercase tracking-[0.32em] text-white/42">Chinese body</p>
+                  <p className="mt-3 text-sm font-medium text-white">
+                    {state.targetDoc?.name || 'Generated automatically'}
+                  </p>
+                </div>
+
+                <div className="line-panel px-5 py-5">
+                  <p className="text-xs uppercase tracking-[0.32em] text-white/42">Citation style</p>
+                  <p className="mt-3 text-sm font-medium text-white">{state.citationStyle}</p>
+                </div>
+              </div>
+
+              <div className="line-panel px-5 py-5 text-sm leading-7 text-white/62">
+                Download should begin automatically. If the browser does not trigger it, use the
+                manual download button below.
+              </div>
+
+              <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+                <a
+                  href={buildDownloadUrl(outputPath)}
+                  download="result.docx"
+                  className="pill-shell"
+                >
+                  <span className="pill-streak" />
+                  <span className="pill-inner-light">
+                    <Download size={16} />
+                    Download DOCX
+                  </span>
+                </a>
+
+                <button type="button" onClick={resetForNextRun} className="pill-shell">
+                  <span className="pill-streak" />
+                  <span className="pill-inner-dark">Process Another File</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

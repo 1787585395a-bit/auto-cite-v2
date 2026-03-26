@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Loader2, CheckCircle2, Terminal } from 'lucide-react';
+import { CheckCircle2, Loader2, Terminal } from 'lucide-react';
 
 interface ProcessingProps {
   progress: number;
@@ -10,59 +10,121 @@ export const Processing: React.FC<ProcessingProps> = ({ progress, logs }) => {
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const steps = [
-    { label: "读取文档", threshold: 10 },
-    { label: "AI识别脚注", threshold: 25 },
-    { label: "分批对齐处理", threshold: 78 },
-    { label: "插入脚注", threshold: 90 },
-    { label: "验证结果", threshold: 95 },
+    { label: 'Read source material', threshold: 10 },
+    { label: 'Detect footnotes', threshold: 25 },
+    { label: 'Translate or align notes', threshold: 60 },
+    { label: 'Write the DOCX output', threshold: 85 },
+    { label: 'Validate final document', threshold: 95 },
   ];
 
-  // 日志滚动到底部
+  const activeStep =
+    progress >= 100
+      ? 'Final package complete'
+      : steps.find((step) => progress < step.threshold)?.label || steps[steps.length - 1].label;
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
   return (
-    <div className="h-full flex flex-col items-center justify-center p-6 bg-white">
-      <div className="w-full max-w-2xl flex flex-col gap-4">
+    <div className="relative min-h-screen overflow-hidden px-6 pb-12 pt-24 md:px-10">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="ambient-grid absolute inset-0 opacity-30" />
+        <div className="absolute left-[-10%] top-[8%] h-72 w-72 rounded-full bg-white/[0.06] blur-3xl" />
+        <div className="absolute right-[-14%] top-[28%] h-96 w-96 rounded-full bg-white/[0.04] blur-3xl" />
+      </div>
 
-        {/* 进度卡片 */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-slate-200">
-          <div className="flex items-center gap-6">
-            {/* 圆形进度 */}
-            <div className="relative inline-flex items-center justify-center w-16 h-16 flex-shrink-0">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle className="text-slate-100" strokeWidth="6" stroke="currentColor" fill="transparent" r="28" cx="32" cy="32" />
-                <circle
-                  className="text-black transition-all duration-500 ease-out"
-                  strokeWidth="6"
-                  strokeDasharray={176}
-                  strokeDashoffset={176 - (176 * progress) / 100}
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  fill="transparent"
-                  r="28"
-                  cx="32"
-                  cy="32"
-                />
-              </svg>
-              <span className="absolute text-sm font-bold text-black">{progress}%</span>
+      <div className="relative z-10 mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[0.94fr_1.06fr]">
+        <section className="upload-surface p-6 md:p-10">
+          <div className="space-y-8">
+            <div className="space-y-4">
+              <p className="text-xs uppercase tracking-[0.32em] text-white/42">Processing</p>
+              <h1 className="max-w-md text-3xl font-medium leading-tight text-white md:text-4xl">
+                Building the translated DOCX without breaking the footnote structure.
+              </h1>
+              <p className="max-w-xl text-sm leading-7 text-white/64">
+                The pipeline is unchanged. You are watching the same backend workflow run through
+                extraction, translation or alignment, and DOCX insertion.
+              </p>
             </div>
 
-            {/* 步骤列表 */}
-            <div className="flex-1 grid grid-cols-1 gap-2">
-              {steps.map((step, idx) => {
+            <div className="line-panel px-6 py-6">
+              <div className="flex flex-col gap-6 md:flex-row md:items-center">
+                <div className="relative inline-flex h-24 w-24 items-center justify-center self-start">
+                  <svg className="h-full w-full -rotate-90 transform">
+                    <circle
+                      className="text-white/10"
+                      strokeWidth="6"
+                      stroke="currentColor"
+                      fill="transparent"
+                      r="42"
+                      cx="48"
+                      cy="48"
+                    />
+                    <circle
+                      className="text-white transition-all duration-500 ease-out"
+                      strokeWidth="6"
+                      strokeDasharray={264}
+                      strokeDashoffset={264 - (264 * progress) / 100}
+                      strokeLinecap="round"
+                      stroke="currentColor"
+                      fill="transparent"
+                      r="42"
+                      cx="48"
+                      cy="48"
+                    />
+                  </svg>
+                  <span className="absolute text-lg font-medium text-white">{progress}%</span>
+                </div>
+
+                <div className="min-w-0 flex-1 space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-white">Current focus</p>
+                    <p className="mt-1 text-lg text-white/78">{activeStep}</p>
+                  </div>
+
+                  <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-white transition-all duration-500"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {steps.map((step, index) => {
+                const previousThreshold = steps[index - 1]?.threshold ?? 0;
                 const done = progress >= step.threshold;
-                const active = !done && progress >= (steps[idx - 1]?.threshold ?? 0);
+                const active = !done && progress >= previousThreshold;
+
                 return (
-                  <div key={idx} className="flex items-center gap-2">
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors duration-300
-                      ${done ? 'bg-black text-white' : active ? 'bg-slate-200 text-black' : 'bg-slate-100 text-slate-300'}`}>
-                      {done
-                        ? <CheckCircle2 size={12} />
-                        : <Loader2 size={12} className={active ? 'animate-spin' : ''} />}
+                  <div
+                    key={step.label}
+                    className="flex items-center gap-3 border-b border-white/8 pb-4 last:border-b-0 last:pb-0"
+                  >
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-full border transition duration-300 ${
+                        done
+                          ? 'border-white bg-white text-black'
+                          : active
+                            ? 'border-white/20 bg-white/10 text-white'
+                            : 'border-white/10 bg-white/[0.03] text-white/36'
+                      }`}
+                    >
+                      {done ? (
+                        <CheckCircle2 size={16} />
+                      ) : (
+                        <Loader2 size={16} className={active ? 'animate-spin' : ''} />
+                      )}
                     </div>
-                    <span className={`text-sm ${done ? 'text-black font-semibold' : active ? 'text-black' : 'text-slate-400'}`}>
+
+                    <span
+                      className={`text-sm ${
+                        done ? 'font-medium text-white' : active ? 'text-white/82' : 'text-white/40'
+                      }`}
+                    >
                       {step.label}
                     </span>
                   </div>
@@ -70,42 +132,58 @@ export const Processing: React.FC<ProcessingProps> = ({ progress, logs }) => {
               })}
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* 日志面板 */}
-        <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-800">
-            <Terminal size={14} className="text-slate-400" />
-            <span className="text-xs font-mono text-slate-400">Python 输出日志</span>
-            <div className={`ml-auto w-2 h-2 rounded-full ${progress < 100 ? 'bg-green-500 animate-pulse' : 'bg-slate-600'}`} />
+        <section className="line-panel overflow-hidden">
+          <div className="flex items-center gap-2 border-b border-white/10 px-5 py-4">
+            <Terminal size={15} className="text-white/54" />
+            <span className="text-xs uppercase tracking-[0.28em] text-white/42">
+              Python processing log
+            </span>
+            <div
+              className={`ml-auto h-2 w-2 rounded-full ${
+                progress < 100 ? 'animate-pulse bg-emerald-400' : 'bg-white/28'
+              }`}
+            />
           </div>
-          <div className="h-64 overflow-y-auto p-4 font-mono text-xs space-y-1">
-            {logs.length === 0 && (
-              <span className="text-slate-500">等待处理开始...</span>
-            )}
-            {logs.map((line, i) => {
-              const isError = line.includes('[ERROR]');
-              const isOk = line.includes('[OK]');
-              const isWarning = line.includes('[WARNING]') || line.includes('[FALLBACK');
-              const isBatch = line.includes('[批次') || line.includes('[阶段');
-              const isStep = line.includes('[步骤');
-              return (
-                <div key={i} className={`leading-relaxed
-                  ${isError ? 'text-red-400' :
-                    isOk ? 'text-green-400' :
-                    isWarning ? 'text-yellow-400' :
-                    isBatch ? 'text-blue-300' :
-                    isStep ? 'text-white font-semibold' :
-                    'text-slate-400'}`}>
-                  <span className="text-slate-600 select-none mr-2">&gt;</span>
-                  {line}
-                </div>
-              );
-            })}
+
+          <div className="h-[440px] overflow-y-auto px-5 py-4 font-mono text-xs">
+            {logs.length === 0 && <span className="text-white/42">Waiting for processing to start...</span>}
+
+            <div className="space-y-2">
+              {logs.map((line, index) => {
+                const isError = line.includes('[ERROR]');
+                const isOk = line.includes('[OK]');
+                const isWarning = line.includes('[WARNING]') || line.includes('[FALLBACK');
+                const isBatch = line.includes('[BATCH');
+                const isStep = line.includes('[STEP') || line.includes('[DONE]');
+
+                return (
+                  <div
+                    key={`${line}-${index}`}
+                    className={`leading-relaxed ${
+                      isError
+                        ? 'text-red-300'
+                        : isOk
+                          ? 'text-emerald-300'
+                          : isWarning
+                            ? 'text-amber-300'
+                            : isBatch
+                              ? 'text-sky-300'
+                              : isStep
+                                ? 'font-medium text-white'
+                                : 'text-white/58'
+                    }`}
+                  >
+                    <span className="mr-2 select-none text-white/24">&gt;</span>
+                    {line}
+                  </div>
+                );
+              })}
+            </div>
             <div ref={logEndRef} />
           </div>
-        </div>
-
+        </section>
       </div>
     </div>
   );

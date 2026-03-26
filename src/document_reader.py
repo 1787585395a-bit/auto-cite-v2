@@ -1,110 +1,70 @@
 """
-文档读取模块
+Read DOCX or PDF source files into a simple text structure.
 """
-from docx import Document
-from typing import Dict, List
+from __future__ import annotations
+
 import os
+from typing import Dict
+
 import PyPDF2
+from docx import Document
 
 
 class DocumentReader:
-    """文档读取器（支持DOCX和PDF）"""
+    """Document reader with DOCX and PDF support."""
 
     @staticmethod
     def read_pdf(file_path: str) -> Dict:
-        """
-        读取PDF文档
-
-        Args:
-            file_path: 文档路径
-
-        Returns:
-            Dict: 包含文档信息的字典
-        """
+        """Read PDF text page by page."""
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"文件不存在: {file_path}")
+            raise FileNotFoundError(f"File not found: {file_path}")
 
         try:
-            with open(file_path, 'rb') as file:
+            with open(file_path, "rb") as file:
                 pdf_reader = PyPDF2.PdfReader(file)
-
-                # 提取所有页面文本
                 paragraphs = []
+
                 for page in pdf_reader.pages:
-                    text = page.extract_text()
+                    text = page.extract_text() or ""
                     if text.strip():
                         paragraphs.append(text.strip())
 
-                # 生成完整文本
                 full_text = "\n\n".join(paragraphs)
-
                 return {
                     "paragraphs": paragraphs,
                     "full_text": full_text,
                     "has_footnotes": False,
-                    "footnotes": {}
+                    "footnotes": {},
                 }
-        except Exception as e:
-            raise Exception(f"读取PDF失败: {str(e)}")
-
-    @staticmethod
-    def read_file(file_path: str) -> Dict:
-        """
-        自动识别文件类型并读取
-
-        Args:
-            file_path: 文档路径
-
-        Returns:
-            Dict: 包含文档信息的字典
-        """
-        if file_path.lower().endswith('.pdf'):
-            return DocumentReader.read_pdf(file_path)
-        elif file_path.lower().endswith('.docx'):
-            return DocumentReader.read_docx(file_path)
-        else:
-            raise ValueError(f"不支持的文件格式: {file_path}")
+        except Exception as exc:
+            raise RuntimeError(f"Failed to read PDF: {exc}") from exc
 
     @staticmethod
     def read_docx(file_path: str) -> Dict:
-        """
-        读取DOCX文档
-
-        Args:
-            file_path: 文档路径
-
-        Returns:
-            Dict: 包含文档信息的字典
-                - paragraphs: List[str] - 所有段落文本
-                - full_text: str - 完整文本
-                - has_footnotes: bool - 是否包含脚注
-                - footnotes: Dict[str, str] - 脚注ID到内容的映射
-        """
-        # 检查文件是否存在
+        """Read DOCX paragraphs as plain text."""
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"文件不存在: {file_path}")
+            raise FileNotFoundError(f"File not found: {file_path}")
 
         try:
-            # 读取文档
             doc = Document(file_path)
-
-            # 提取段落（过滤空段落）
             paragraphs = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
-
-            # 生成完整文本
             full_text = "\n\n".join(paragraphs)
-
-            # 简化版：暂不提取脚注
-            # 后续可扩展从document._element.xml中提取
-            footnotes = {}
-            has_footnotes = False
 
             return {
                 "paragraphs": paragraphs,
                 "full_text": full_text,
-                "has_footnotes": has_footnotes,
-                "footnotes": footnotes
+                "has_footnotes": False,
+                "footnotes": {},
             }
+        except Exception as exc:
+            raise RuntimeError(f"Failed to read DOCX: {exc}") from exc
 
-        except Exception as e:
-            raise Exception(f"读取文档失败: {str(e)}")
+    @staticmethod
+    def read_file(file_path: str) -> Dict:
+        """Dispatch to the correct reader based on file extension."""
+        lower_path = file_path.lower()
+        if lower_path.endswith(".pdf"):
+            return DocumentReader.read_pdf(file_path)
+        if lower_path.endswith(".docx"):
+            return DocumentReader.read_docx(file_path)
+        raise ValueError(f"Unsupported file format: {file_path}")

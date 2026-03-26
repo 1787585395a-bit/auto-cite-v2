@@ -32,7 +32,7 @@ export interface SystemLog {
   id: string;
   timestamp: string;
   level: 'INFO' | 'WARN' | 'ERROR';
-  module: 'PARSER' | 'SEMANTIC_ALIGN' | 'FORMATTER';
+  module: 'PARSER' | 'SEMANTIC_ALIGN' | 'FORMATTER' | 'Python';
   message: string;
 }
 

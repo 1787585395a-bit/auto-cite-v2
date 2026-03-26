@@ -1,19 +1,13 @@
 {
   "name": "auto-cite-frontend",
   "version": "1.0.0",
-  "main": "electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
-    "electron:build": "npm run build && electron-builder"
-  },
-  "build": {
-    "appId": "com.autocite.app",
-    "productName": "AutoCite",
-    "files": ["dist/**/*", "electron/**/*"],
-    "win": { "target": "nsis" }
+    "server": "node server.js",
+    "web:dev": "concurrently \"npm run server\" \"npm run dev\"",
+    "start": "node server.js",
+    "build": "vite build"
   },
   "dependencies": {
     "react": "^19.2.4",
@@ -43,8 +37,6 @@
     "tailwindcss": "^3.4.17",
     "postcss": "^8.4.49",
     "autoprefixer": "^10.4.20",
-    "concurrently": "^9.1.2",
-    "wait-on": "^8.0.1",
-    "cross-env": "^7.0.3"
+    "concurrently": "^9.1.2"
   }
 }
