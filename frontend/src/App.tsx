@@ -4,7 +4,7 @@ import { Download, FileCheck } from 'lucide-react';
 import { Layout } from './components/Layout';
 import { Processing } from './components/Processing';
 import { UploadConfig } from './components/UploadConfig';
-import { backendService } from './services/backendService';
+import { backendService, ProcessingCancelledError } from './services/backendService';
 import { AppState, DocumentFile, WorkflowStep } from './types';
 
 const App: React.FC = () => {
@@ -18,6 +18,7 @@ const App: React.FC = () => {
     systemLogs: [],
   });
   const [outputPath, setOutputPath] = useState<string | null>(null);
+  const [isStopping, setIsStopping] = useState(false);
 
   const buildDownloadUrl = (downloadUrl?: string | null): string => {
     const fallback = import.meta.env.PROD ? '/api/download' : 'http://localhost:8081/api/download';
@@ -39,6 +40,8 @@ const App: React.FC = () => {
   };
 
   const handleStartProcessing = async () => {
+    setIsStopping(false);
+    setOutputPath(null);
     setState((previousState) => ({
       ...previousState,
       step: WorkflowStep.PROCESSING,
@@ -83,10 +86,31 @@ const App: React.FC = () => {
 
       triggerDownload(downloadUrl);
     } catch (error) {
+      if (error instanceof ProcessingCancelledError) {
+        setState((previousState) => ({
+          ...previousState,
+          step: WorkflowStep.UPLOAD,
+          processingProgress: 0,
+          systemLogs: [],
+        }));
+        return;
+      }
+
       console.error('Processing failed:', error);
       window.alert(`Processing failed: ${(error as Error).message}`);
       setState((previousState) => ({ ...previousState, step: WorkflowStep.UPLOAD }));
+    } finally {
+      setIsStopping(false);
     }
+  };
+
+  const handleStopProcessing = () => {
+    if (isStopping) {
+      return;
+    }
+
+    setIsStopping(true);
+    backendService.cancelCurrentProcessing();
   };
 
   const resetForNextRun = () => {
@@ -127,7 +151,12 @@ const App: React.FC = () => {
       )}
 
       {state.step === WorkflowStep.PROCESSING && (
-        <Processing progress={state.processingProgress} logs={state.systemLogs.map((log) => log.message)} />
+        <Processing
+          progress={state.processingProgress}
+          logs={state.systemLogs.map((log) => log.message)}
+          onStop={handleStopProcessing}
+          isStopping={isStopping}
+        />
       )}
 
       {state.step === WorkflowStep.EXPORT && (

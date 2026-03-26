@@ -2,11 +2,13 @@ import React, { useEffect, useRef } from 'react';
 import { CheckCircle2, Loader2, Terminal } from 'lucide-react';
 
 interface ProcessingProps {
+  isStopping: boolean;
+  onStop: () => void;
   progress: number;
   logs: string[];
 }
 
-export const Processing: React.FC<ProcessingProps> = ({ progress, logs }) => {
+export const Processing: React.FC<ProcessingProps> = ({ isStopping, onStop, progress, logs }) => {
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const steps = [
@@ -37,15 +39,22 @@ export const Processing: React.FC<ProcessingProps> = ({ progress, logs }) => {
       <div className="relative z-10 mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[0.94fr_1.06fr]">
         <section className="upload-surface p-6 md:p-10">
           <div className="space-y-8">
-            <div className="space-y-4">
-              <p className="text-xs uppercase tracking-[0.32em] text-white/42">Processing</p>
-              <h1 className="max-w-md text-3xl font-medium leading-tight text-white md:text-4xl">
-                Building the translated DOCX without breaking the footnote structure.
-              </h1>
-              <p className="max-w-xl text-sm leading-7 text-white/64">
-                The pipeline is unchanged. You are watching the same backend workflow run through
-                extraction, translation or alignment, and DOCX insertion.
-              </p>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-4">
+                <p className="text-xs uppercase tracking-[0.32em] text-white/42">Processing</p>
+                <h1 className="max-w-md text-3xl font-medium leading-tight text-white md:text-4xl">
+                  Building the translated DOCX without breaking the footnote structure.
+                </h1>
+              </div>
+
+              <button
+                type="button"
+                onClick={onStop}
+                disabled={isStopping}
+                className={`pill-inner-dark shrink-0 ${isStopping ? 'cursor-not-allowed opacity-55' : ''}`}
+              >
+                {isStopping ? 'Stopping...' : 'Stop Processing'}
+              </button>
             </div>
 
             <div className="line-panel px-6 py-6">

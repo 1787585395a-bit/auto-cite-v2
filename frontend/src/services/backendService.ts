@@ -1,5 +1,22 @@
 import { Citation, SystemLog, DocumentFile } from '../types';
 
+type ProcessingResult = {
+  citations: Citation[];
+  logs: SystemLog[];
+  outputPath?: string;
+};
+
+type ActiveProcessing = {
+  cancel: () => void;
+};
+
+export class ProcessingCancelledError extends Error {
+  constructor(message = 'Processing cancelled') {
+    super(message);
+    this.name = 'ProcessingCancelledError';
+  }
+}
+
 function inferProgress(message: string): number | null {
   if (message.includes('[STEP 1]')) return 10;
   if (message.includes('[STEP 2]')) return 25;
@@ -21,6 +38,11 @@ class BackendService {
   private baseURL = import.meta.env.PROD
     ? '/api'
     : 'http://localhost:8081/api';
+  private activeProcessing: ActiveProcessing | null = null;
+
+  cancelCurrentProcessing(): void {
+    this.activeProcessing?.cancel();
+  }
 
   async processDocuments(
     referenceDoc: DocumentFile | null,
@@ -28,7 +50,7 @@ class BackendService {
     citationStyle: string,
     onProgress: (progress: number) => void,
     onLog: (message: string, level?: string) => void,
-  ): Promise<{ citations: Citation[]; logs: SystemLog[]; outputPath?: string }> {
+  ): Promise<ProcessingResult> {
     if (!referenceDoc) {
       throw new Error('Reference document is required');
     }
@@ -49,6 +71,105 @@ class BackendService {
       let sseEventBuffer = '';
       let lastProgress = 0;
       let settled = false;
+      let aborted = false;
+
+      const registerActiveProcessing = (cancel: () => void) => {
+        const activeProcessing = { cancel };
+        this.activeProcessing = activeProcessing;
+        return () => {
+          if (this.activeProcessing === activeProcessing) {
+            this.activeProcessing = null;
+          }
+        };
+      };
+
+      let cleanupActiveProcessing = () => {};
+
+      const safeResolve = (value: ProcessingResult) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        cleanupActiveProcessing();
+        resolve(value);
+      };
+
+      const safeReject = (error: Error) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        cleanupActiveProcessing();
+        reject(error);
+      };
+
+      const startMockProcessing = () => {
+        let timerId: number | null = null;
+
+        cleanupActiveProcessing();
+        cleanupActiveProcessing = registerActiveProcessing(() => {
+          if (timerId !== null) {
+            window.clearTimeout(timerId);
+          }
+          safeReject(new ProcessingCancelledError());
+        });
+
+        const mockSteps = [
+          '[STEP 1] Reading English source...',
+          '[STEP 2] Detecting English footnotes...',
+          '[STEP 3A] Translating Chinese body...',
+          '[STEP 3B] Translating footnotes...',
+          '[STEP 4] Saving review artifacts...',
+          '[STEP 5] Building translated DOCX draft...',
+          '[STEP 6] Validating output...',
+          '[DONE] Processing complete.',
+        ];
+
+        let index = 0;
+
+        const tick = () => {
+          if (settled) {
+            return;
+          }
+
+          if (index >= mockSteps.length) {
+            onProgress(100);
+            safeResolve({ citations: this.generateMockCitations(), logs: collectedLogs });
+            return;
+          }
+
+          const message = mockSteps[index++];
+          onLog(message);
+          collectedLogs.push({
+            id: `log-${collectedLogs.length}`,
+            timestamp: new Date().toISOString(),
+            level: 'INFO',
+            module: 'Python',
+            message,
+          });
+
+          const progress = inferProgress(message);
+          if (progress !== null) {
+            onProgress(progress);
+          }
+
+          timerId = window.setTimeout(tick, 400);
+        };
+
+        tick();
+      };
+
+      cleanupActiveProcessing = registerActiveProcessing(() => {
+        if (settled || aborted) {
+          return;
+        }
+
+        aborted = true;
+        xhr.abort();
+        safeReject(new ProcessingCancelledError());
+      });
 
       const handleEvent = (eventType: string, dataStr: string) => {
         if (settled) {
@@ -77,16 +198,14 @@ class BackendService {
               onProgress(progress);
             }
           } else if (eventType === 'done') {
-            settled = true;
             onProgress(100);
-            resolve({
+            safeResolve({
               citations: data.citations || [],
               logs: collectedLogs,
               outputPath: data.downloadUrl || data.outputPath,
             });
           } else if (eventType === 'error') {
-            settled = true;
-            reject(new Error(data.message));
+            safeReject(new Error(data.message));
           }
         } catch (error) {
           // Ignore malformed partial SSE fragments.
@@ -118,9 +237,17 @@ class BackendService {
         }
       };
 
+      xhr.onabort = () => {
+        safeReject(new ProcessingCancelledError());
+      };
+
       xhr.onerror = () => {
+        if (settled || aborted) {
+          return;
+        }
+
         console.error('Stream request failed, falling back to mock');
-        this.mockProcessing(onProgress, onLog).then(resolve).catch(reject);
+        startMockProcessing();
       };
 
       xhr.send(formData);
@@ -140,55 +267,6 @@ class BackendService {
 
     return { loaded: false };
   }
-
-  private mockProcessing(
-    onProgress: (progress: number) => void,
-    onLog: (message: string, level?: string) => void,
-  ): Promise<{ citations: Citation[]; logs: SystemLog[]; outputPath?: string }> {
-    const mockSteps = [
-      '[STEP 1] Reading English source...',
-      '[STEP 2] Detecting English footnotes...',
-      '[STEP 3A] Translating Chinese body...',
-      '[STEP 3B] Translating footnotes...',
-      '[STEP 4] Saving review artifacts...',
-      '[STEP 5] Building translated DOCX draft...',
-      '[STEP 6] Validating output...',
-      '[DONE] Processing complete.',
-    ];
-
-    return new Promise((resolve) => {
-      let index = 0;
-      const logs: SystemLog[] = [];
-
-      const tick = () => {
-        if (index >= mockSteps.length) {
-          onProgress(100);
-          resolve({ citations: this.generateMockCitations(), logs });
-          return;
-        }
-
-        const message = mockSteps[index++];
-        onLog(message);
-        logs.push({
-          id: `log-${index}`,
-          timestamp: new Date().toISOString(),
-          level: 'INFO',
-          module: 'Python',
-          message,
-        });
-
-        const progress = inferProgress(message);
-        if (progress !== null) {
-          onProgress(progress);
-        }
-
-        setTimeout(tick, 400);
-      };
-
-      tick();
-    });
-  }
-
   private generateMockCitations(): Citation[] {
     return [
       {
