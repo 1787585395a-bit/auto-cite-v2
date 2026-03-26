@@ -37,24 +37,13 @@ export const Processing: React.FC<ProcessingProps> = ({ isStopping, onStop, prog
       </div>
 
       <div className="relative z-10 mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[0.94fr_1.06fr]">
-        <section className="upload-surface p-6 md:p-10">
-          <div className="space-y-8">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="space-y-4">
+        <section className="upload-surface h-full p-6 md:p-10">
+          <div className="flex h-full flex-col gap-8">
+            <div className="space-y-4">
                 <p className="text-xs uppercase tracking-[0.32em] text-white/42">Processing</p>
-                <h1 className="max-w-md text-3xl font-medium leading-tight text-white md:text-4xl">
+                <h1 className="max-w-md text-2xl font-medium leading-tight text-white md:text-3xl">
                   Building the translated DOCX without breaking the footnote structure.
                 </h1>
-              </div>
-
-              <button
-                type="button"
-                onClick={onStop}
-                disabled={isStopping}
-                className={`pill-inner-dark shrink-0 ${isStopping ? 'cursor-not-allowed opacity-55' : ''}`}
-              >
-                {isStopping ? 'Stopping...' : 'Stop Processing'}
-              </button>
             </div>
 
             <div className="line-panel px-6 py-6">
@@ -139,6 +128,17 @@ export const Processing: React.FC<ProcessingProps> = ({ isStopping, onStop, prog
                   </div>
                 );
               })}
+            </div>
+
+            <div className="mt-auto pt-2">
+              <button
+                type="button"
+                onClick={onStop}
+                disabled={isStopping}
+                className={`pill-inner-dark w-full justify-center ${isStopping ? 'cursor-not-allowed opacity-55' : ''}`}
+              >
+                {isStopping ? 'Stopping...' : 'Stop Processing'}
+              </button>
             </div>
           </div>
         </section>
